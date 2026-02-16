@@ -417,11 +417,24 @@ def parse_args():
         description="Zabbix trigger action'larını condition kontrolü ile izler.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Environment Variables (AWX/CI uyumlu):
+  ZABBIX_URL          Zabbix frontend URL
+  ZABBIX_USER         Zabbix kullanıcı adı
+  ZABBIX_PASSWORD     Zabbix şifresi
+  ZABBIX_API_TOKEN    Zabbix API token
+  MAILTO              Bildirim e-posta adresi
+  MAIL_FROM           Gönderen e-posta adresi
+  SMTP_SERVER         SMTP sunucusu
+  SMTP_PORT           SMTP portu
+  SMTP_USER           SMTP kullanıcı
+  SMTP_PASSWORD       SMTP şifre
+  SMTP_TLS            true/false
+
+Öncelik sırası: Environment Variable > CLI Argüman > Config Dosyası
+
 Örnekler:
   %(prog)s --config config.ini
-  %(prog)s --config config.ini --dry-run
-  %(prog)s --config config.ini --mailto admin@example.com
-  %(prog)s --config config.ini --report
+  ZABBIX_URL=http://zabbix.local ZABBIX_API_TOKEN=abc123 %(prog)s --mailto admin@example.com
         """,
     )
 
@@ -450,57 +463,85 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-
-    # Config + CLI merge
-    url = args.url or ""
-    user = args.user or ""
-    password = args.password or ""
-    api_token = args.api_token or ""
-    interval = args.interval
-    log_file = args.log_file
-    dry_run = args.dry_run
-    debug = args.debug
-    mailto = args.mailto
-    email_cfg = {}
-
+def _resolve_settings(args) -> dict:
+    """
+    Ayarları çözer. Öncelik: Environment Variable > CLI Argüman > Config Dosyası
+    """
+    # 1) Config dosyasından (en düşük öncelik)
+    cfg = {}
     if args.config:
         cfg = load_config(args.config)
-        url = url or cfg["url"]
-        user = user or cfg["user"]
-        password = password or cfg["password"]
-        api_token = api_token or cfg["api_token"]
-        interval = args.interval if args.interval != DEFAULT_INTERVAL else cfg["interval"]
-        log_file = log_file or cfg.get("log_file", "")
-        dry_run = dry_run or cfg.get("dry_run", False)
-        debug = debug or cfg.get("debug", False)
-        mailto = mailto or cfg.get("mailto", "")
 
-        email_cfg = {
-            "mail_from": cfg.get("mail_from", ""),
-            "smtp_server": args.smtp_server or cfg.get("smtp_server", DEFAULT_SMTP_SERVER),
-            "smtp_port": args.smtp_port or cfg.get("smtp_port", DEFAULT_SMTP_PORT),
-            "smtp_user": cfg.get("smtp_user", ""),
-            "smtp_password": cfg.get("smtp_password", ""),
-            "smtp_tls": cfg.get("smtp_tls", False),
-        }
+    # 2) Her ayar için: ENV > CLI > Config
+    def resolve(env_name, cli_value, cfg_key, default=""):
+        env_val = os.environ.get(env_name, "")
+        if env_val:
+            return env_val
+        if cli_value:
+            return cli_value
+        return cfg.get(cfg_key, default)
 
-    # CLI SMTP override
-    if args.smtp_server:
-        email_cfg["smtp_server"] = args.smtp_server
-    if args.smtp_port:
-        email_cfg["smtp_port"] = args.smtp_port
+    settings = {
+        "url": resolve("ZABBIX_URL", args.url, "url"),
+        "user": resolve("ZABBIX_USER", args.user, "user"),
+        "password": resolve("ZABBIX_PASSWORD", args.password, "password"),
+        "api_token": resolve("ZABBIX_API_TOKEN", args.api_token, "api_token"),
+        "mailto": resolve("MAILTO", args.mailto, "mailto"),
+        "log_file": resolve("LOG_FILE", args.log_file, "log_file"),
+    }
 
-    setup_logging(log_file, debug)
+    # Boolean/int ayarlar
+    settings["interval"] = int(os.environ.get("INTERVAL", "0")) or args.interval
+    if settings["interval"] == DEFAULT_INTERVAL:
+        settings["interval"] = cfg.get("interval", DEFAULT_INTERVAL)
 
-    if not url:
-        logger.error("Zabbix URL gerekli. --url veya config dosyası kullanın.")
+    settings["dry_run"] = (
+        os.environ.get("DRY_RUN", "").lower() in ("true", "1", "yes")
+        or args.dry_run
+        or cfg.get("dry_run", False)
+    )
+    settings["debug"] = (
+        os.environ.get("DEBUG", "").lower() in ("true", "1", "yes")
+        or args.debug
+        or cfg.get("debug", False)
+    )
+
+    # E-posta ayarları
+    settings["email_cfg"] = {
+        "mail_from": resolve("MAIL_FROM", "", "mail_from"),
+        "smtp_server": resolve("SMTP_SERVER", args.smtp_server, "smtp_server", DEFAULT_SMTP_SERVER),
+        "smtp_port": int(resolve("SMTP_PORT", str(args.smtp_port or ""), "smtp_port", str(DEFAULT_SMTP_PORT))),
+        "smtp_user": resolve("SMTP_USER", "", "smtp_user"),
+        "smtp_password": resolve("SMTP_PASSWORD", "", "smtp_password"),
+        "smtp_tls": os.environ.get("SMTP_TLS", "").lower() in ("true", "1", "yes") or cfg.get("smtp_tls", False),
+    }
+
+    return settings
+
+
+def main():
+    args = parse_args()
+    s = _resolve_settings(args)
+
+    setup_logging(s["log_file"], s["debug"])
+
+    # Hangi kaynaktan geldiğini logla
+    sources = []
+    if any(os.environ.get(k) for k in ("ZABBIX_URL", "ZABBIX_USER", "ZABBIX_API_TOKEN")):
+        sources.append("environment")
+    if args.config:
+        sources.append("config")
+    if args.url or args.user or args.api_token:
+        sources.append("cli")
+    logger.info("Ayar kaynakları: %s", ", ".join(sources) if sources else "varsayılan")
+
+    if not s["url"]:
+        logger.error("Zabbix URL gerekli. ZABBIX_URL env, --url veya config dosyası kullanın.")
         sys.exit(1)
 
     # Bağlan
     try:
-        api = ZabbixAPI(url, user=user, password=password, api_token=api_token)
+        api = ZabbixAPI(s["url"], user=s["user"], password=s["password"], api_token=s["api_token"])
         version = api.get_api_version()
         logger.info("Zabbix API versiyonu: %s", version)
     except Exception as e:
@@ -514,13 +555,16 @@ def main():
 
     # Çalıştır
     if args.daemon:
-        run_daemon(api, interval, dry_run=dry_run, mailto=mailto, email_cfg=email_cfg)
+        run_daemon(api, s["interval"], dry_run=s["dry_run"],
+                   mailto=s["mailto"], email_cfg=s["email_cfg"])
     else:
-        result = check_and_disable(api, dry_run=dry_run, mailto=mailto, email_cfg=email_cfg)
+        result = check_and_disable(api, dry_run=s["dry_run"],
+                                   mailto=s["mailto"], email_cfg=s["email_cfg"])
         # AWX uyumlu exit code: 2 = changed (disable edilen action var)
-        if result and not dry_run:
+        if result and not s["dry_run"]:
             sys.exit(2)
 
 
 if __name__ == "__main__":
     main()
+

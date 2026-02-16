@@ -1,11 +1,15 @@
 [zabbix]
-# Zabbix frontend URL (zorunlu)
+# Zabbix frontend URL
+# Config yerine ZABBIX_URL environment variable da kullanılabilir
 url = http://your-zabbix-server.com
 
-# Kimlik doğrulama - ikisinden birini kullanın:
+# Kimlik doğrulama
+# AWX kullanıyorsanız bu değerleri AWX Credential olarak tanımlayıp
+# environment variable (ZABBIX_USER, ZABBIX_PASSWORD veya ZABBIX_API_TOKEN) olarak verin
+
 # Seçenek 1: Kullanıcı adı / şifre
-user = Admin
-password = zabbix
+# user = Admin
+# password = zabbix
 
 # Seçenek 2: API Token (Zabbix 5.4+)
 # api_token = your_api_token_here
@@ -13,21 +17,24 @@ password = zabbix
 # Kontrol aralığı (saniye) - varsayılan: 300 (5 dakika)
 interval = 300
 
-# Sadece raporla, disable etme - varsayılan: false
+# Sadece raporla, disable etme
 dry_run = false
 
 # Log dosyası (boşsa stdout'a yazar)
-log_file = /var/log/zabbix_action_monitor.log
+# log_file = /var/log/zabbix_action_monitor.log
 
 # Debug modu
 debug = false
 
 [email]
+# AWX kullanıyorsanız bu değerleri de env variable olarak verebilirsiniz:
+# MAILTO, MAIL_FROM, SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_TLS
+
 # Bildirim e-postası (virgülle ayırarak birden fazla)
-mailto = admin@example.com
+# mailto = admin@example.com
 
 # Gönderen adres
-mail_from = zabbix-monitor@example.com
+# mail_from = zabbix-monitor@example.com
 
 # SMTP ayarları
 smtp_server = localhost
@@ -37,5 +44,5 @@ smtp_port = 25
 # smtp_user =
 # smtp_password =
 
-# TLS kullan (isteğe bağlı)
+# TLS
 smtp_tls = false
