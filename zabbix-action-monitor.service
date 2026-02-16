@@ -1,0 +1,14 @@
+[Unit]
+Description=Zabbix Trigger Action Monitor - Bos condition kontrolu
+After=network.target
+
+[Service]
+Type=simple
+User=zabbix
+Group=zabbix
+ExecStart=/usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_monitor.py --config /etc/zabbix/action_monitor.ini --daemon
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

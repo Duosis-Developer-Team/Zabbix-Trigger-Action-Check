@@ -1,0 +1,23 @@
+[zabbix]
+# Zabbix frontend URL (zorunlu)
+url = http://your-zabbix-server.com
+
+# Kimlik doğrulama - ikisinden birini kullanın:
+# Seçenek 1: Kullanıcı adı / şifre
+user = Admin
+password = zabbix
+
+# Seçenek 2: API Token (Zabbix 5.4+)
+# api_token = your_api_token_here
+
+# Kontrol aralığı (saniye) - varsayılan: 300 (5 dakika)
+interval = 300
+
+# Sadece raporla, disable etme - varsayılan: false
+dry_run = false
+
+# Log dosyası (boşsa stdout'a yazar)
+log_file = /var/log/zabbix_action_monitor.log
+
+# Debug modu
+debug = false
