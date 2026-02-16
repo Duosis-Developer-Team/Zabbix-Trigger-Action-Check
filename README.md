@@ -2,7 +2,7 @@
 
 Zabbix 6.4 trigger action'larını kontrol eden iki script:
 
-1. **`zabbix_action_monitor.py`** — Condition'u boş olan trigger action'ları otomatik **siler**
+1. **`zabbix_action_monitor.py`** — Condition'u boş olan trigger action'ları otomatik **disable** eder ve e-posta ile bildirir
 2. **`zabbix_action_backup.py`** — Tüm trigger action'ları JSON olarak **yedekler** ve geri yükler
 
 ## Problem
@@ -13,22 +13,17 @@ Zabbix 6.4'te bir trigger action'ın condition'ı silindiğinde action aktif kal
 
 - **Sıfır bağımlılık** — Sadece Python 3 standart kütüphanesi
 - **API Token** veya **kullanıcı/şifre** ile kimlik doğrulama
+- **E-posta bildirimi** — Boş condition tespit edildiğinde SMTP ile bildirim
+- **AWX/Ansible Tower uyumlu** — Exit code 0=sorun yok, 2=disable edilen action var
 - **Ortak config dosyası** — İki script de aynı `config.ini` dosyasını kullanır
 
 ---
 
 ## Kurulum
 
-### 1. Dosyaları sunucuya kopyala
-
 ```bash
 sudo mkdir -p /opt/zabbix-action-monitor
 sudo cp zabbix_action_monitor.py zabbix_action_backup.py /opt/zabbix-action-monitor/
-```
-
-### 2. Config dosyasını oluştur
-
-```bash
 sudo cp config.ini.example /etc/zabbix/action_monitor.ini
 sudo chmod 600 /etc/zabbix/action_monitor.ini
 sudo nano /etc/zabbix/action_monitor.ini
@@ -38,7 +33,7 @@ sudo nano /etc/zabbix/action_monitor.ini
 
 ## Monitor Script — `zabbix_action_monitor.py`
 
-Condition'u boş olan trigger action'ları (enabled/disabled fark etmez) tespit edip **siler**.
+Condition'u boş olan trigger action'ları (enabled/disabled fark etmez) tespit eder, **disable** eder ve e-posta ile bildirir.
 
 ### Kullanım
 
@@ -46,38 +41,49 @@ Condition'u boş olan trigger action'ları (enabled/disabled fark etmez) tespit 
 # Tek seferlik kontrol
 python3 zabbix_action_monitor.py --config config.ini
 
-# Sadece raporla, silme (dry-run)
+# Dry-run (sadece raporla)
 python3 zabbix_action_monitor.py --config config.ini --dry-run
 
-# Tüm action'ların durumunu raporla
+# E-posta bildirimli
+python3 zabbix_action_monitor.py --config config.ini --mailto admin@example.com
+
+# Tüm action'ların raporu
 python3 zabbix_action_monitor.py --config config.ini --report
 
-# Daemon modunda sürekli çalış (5 dk aralıkla)
+# Daemon modunda
 python3 zabbix_action_monitor.py --config config.ini --daemon --interval 300
 ```
 
-### Cron ile çalıştırma (önerilen)
+### AWX / Ansible Tower ile Kullanım
 
+AWX üzerinden doğrudan çalıştırılabilir:
+
+- **Exit 0** → Sorun yok, hiçbir action disable edilmedi
+- **Exit 2** → Disable edilen action var (AWX'te "changed" olarak görünür)
+
+AWX Job Template'te şu komutu kullanın:
 ```bash
-# Her dakika kontrol
-* * * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_monitor.py --config /etc/zabbix/action_monitor.ini >> /var/log/zabbix_action_monitor.log 2>&1
+python3 /opt/zabbix-action-monitor/zabbix_action_monitor.py --config /etc/zabbix/action_monitor.ini --mailto admin@example.com
 ```
 
 ### Parametreler
 
-| Parametre     | Açıklama                         | Varsayılan |
-|---------------|----------------------------------|------------|
-| `--url`       | Zabbix frontend URL'i            | (zorunlu)  |
-| `--user`      | Kullanıcı adı                    | -          |
-| `--password`  | Şifre                            | -          |
-| `--api-token` | API Token (user/password yerine) | -          |
-| `--config`    | Config dosyası yolu              | -          |
-| `--daemon`    | Daemon modunda çalış             | false      |
-| `--interval`  | Kontrol aralığı (saniye)         | 300        |
-| `--dry-run`   | Sadece raporla, silme            | false      |
-| `--report`    | Tüm action'ları raporla          | false      |
-| `--log-file`  | Log dosyası yolu                 | stdout     |
-| `--debug`     | Debug log seviyesi               | false      |
+| Parametre       | Açıklama                               | Varsayılan  |
+|-----------------|----------------------------------------|-------------|
+| `--config`      | Config dosyası yolu                    | -           |
+| `--url`         | Zabbix frontend URL'i                  | (zorunlu)   |
+| `--user`        | Kullanıcı adı                          | -           |
+| `--password`    | Şifre                                  | -           |
+| `--api-token`   | API Token                              | -           |
+| `--mailto`      | Bildirim e-postası                     | -           |
+| `--smtp-server` | SMTP sunucusu                          | `localhost`  |
+| `--smtp-port`   | SMTP portu                             | `25`        |
+| `--daemon`      | Daemon modunda çalış                   | false       |
+| `--interval`    | Kontrol aralığı (saniye)               | 300         |
+| `--dry-run`     | Sadece raporla                         | false       |
+| `--report`      | Tüm action raporu                      | false       |
+| `--log-file`    | Log dosyası yolu                       | stdout      |
+| `--debug`       | Debug seviyesi                         | false       |
 
 ---
 
@@ -85,77 +91,75 @@ python3 zabbix_action_monitor.py --config config.ini --daemon --interval 300
 
 Tüm trigger action'ları detaylı JSON olarak yedekler. Geri yükleme (restore) desteği vardır.
 
-### Yedek alma
+### Kullanım
 
 ```bash
-# Varsayılan dizine (./backups/) yedekle
+# Yedekle (./backups/ dizinine)
 python3 zabbix_action_backup.py --config config.ini
 
-# Belirtilen dizine yedekle
-python3 zabbix_action_backup.py --config config.ini --output /backup/zabbix/
+# Geri yükle
+python3 zabbix_action_backup.py --config config.ini --restore ./backups/trigger_actions_20260216.json
 
 # Son 7 yedeği tut, eskilerini sil
 python3 zabbix_action_backup.py --config config.ini --retain 7
 ```
 
-### Geri yükleme
-
-```bash
-python3 zabbix_action_backup.py --config config.ini --restore ./backups/trigger_actions_20260216_080032.json
-```
-
-### Cron ile günlük yedek (son 30 gün tutulur)
-
-```bash
-0 2 * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_backup.py --config /etc/zabbix/action_monitor.ini --output /backup/zabbix_actions/ --retain 30 >> /var/log/zabbix_action_backup.log 2>&1
-```
-
 ### Parametreler
 
-| Parametre     | Açıklama                                   | Varsayılan  |
-|---------------|--------------------------------------------|-------------|
-| `--url`       | Zabbix frontend URL'i                      | (zorunlu)   |
-| `--user`      | Kullanıcı adı                              | -           |
-| `--password`  | Şifre                                      | -           |
-| `--api-token` | API Token                                  | -           |
-| `--config`    | Config dosyası yolu                        | -           |
-| `--output`    | Yedek dosya yolu veya dizini               | `./backups` |
-| `--restore`   | Bu dosyadan geri yükle                     | -           |
-| `--retain`    | Tutulacak yedek sayısı (0=sınırsız)        | 0           |
-| `--debug`     | Debug log seviyesi                         | false       |
+| Parametre     | Açıklama                            | Varsayılan  |
+|---------------|-------------------------------------|-------------|
+| `--config`    | Config dosyası yolu                 | -           |
+| `--output`    | Yedek dosya yolu veya dizini        | `./backups` |
+| `--restore`   | Bu dosyadan geri yükle              | -           |
+| `--retain`    | Tutulacak yedek sayısı (0=sınırsız) | 0           |
+
+---
+
+## Config Dosyası
+
+`config.ini.example` dosyasını kopyalayıp düzenleyin:
+
+```ini
+[zabbix]
+url = http://your-zabbix-server.com
+user = Admin
+password = zabbix
+interval = 300
+dry_run = false
+log_file = /var/log/zabbix_action_monitor.log
+
+[email]
+mailto = admin@example.com
+mail_from = zabbix-monitor@example.com
+smtp_server = localhost
+smtp_port = 25
+smtp_tls = false
+```
 
 ---
 
 ## Önerilen Cron Konfigürasyonu
 
 ```bash
-# Günde 1 kez yedek al (gece 02:00), son 30 yedeği tut
-0 2 * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_backup.py --config /etc/zabbix/action_monitor.ini --output /backup/zabbix_actions/ --retain 30 >> /var/log/zabbix_action_backup.log 2>&1
-
-# Dakikada 1 condition kontrolü yap
+# Her dakika condition kontrolü + e-posta bildirim
 * * * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_monitor.py --config /etc/zabbix/action_monitor.ini >> /var/log/zabbix_action_monitor.log 2>&1
+
+# Günde 1 kez yedek al, son 30 yedeği tut
+0 2 * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_backup.py --config /etc/zabbix/action_monitor.ini --output /backup/zabbix_actions/ --retain 30 >> /var/log/zabbix_action_backup.log 2>&1
 ```
 
 ## Çıktı Örnekleri
 
-### Monitor — sorun yok
+### Sorun yok (exit 0)
 ```
 2026-02-16 10:00:00 [INFO] Giriş başarılı.
 2026-02-16 10:00:00 [INFO] Zabbix API versiyonu: 6.4.0
-2026-02-16 10:00:00 [INFO] ✔ Tüm enabled trigger action'ların condition'ları mevcut. Sorun yok.
+2026-02-16 10:00:00 [INFO] ✔ Tüm trigger action'ların condition'ları mevcut. Sorun yok.
 ```
 
-### Monitor — boş condition tespit
+### Boş condition tespit + disable (exit 2)
 ```
-2026-02-16 10:00:00 [WARNING] ⚠  BOŞ CONDITION TESPİT EDİLDİ → Action: 'test11' (ID: 42)
-2026-02-16 10:00:00 [INFO]    ✔ Action SİLİNDİ → 'test11' (ID: 42)
-2026-02-16 10:00:00 [INFO] Toplam 1 adet boş condition'lı action silindi.
-```
-
-### Backup
-```
-2026-02-16 02:00:00 [INFO] ✔ 2 trigger action yedeklendi → /backup/trigger_actions_20260216_020000.json
-2026-02-16 02:00:00 [INFO]   Dosya boyutu: 3.2 KB
-2026-02-16 02:00:00 [INFO]   [Enabled] production-alerts (conditions: 3, operations: 2)
-2026-02-16 02:00:00 [INFO]   [Disabled] test-action (conditions: 1, operations: 1)
+2026-02-16 10:00:00 [WARNING] ⚠  BOŞ CONDITION → Action: 'test11' (ID: 42, Status: Enabled)
+2026-02-16 10:00:00 [INFO]    ✔ Action DISABLE edildi → 'test11' (ID: 42)
+2026-02-16 10:00:00 [INFO] 📧 E-posta gönderildi → admin@example.com
 ```

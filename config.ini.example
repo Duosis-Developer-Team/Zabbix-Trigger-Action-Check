@@ -21,3 +21,21 @@ log_file = /var/log/zabbix_action_monitor.log
 
 # Debug modu
 debug = false
+
+[email]
+# Bildirim e-postası (virgülle ayırarak birden fazla)
+mailto = admin@example.com
+
+# Gönderen adres
+mail_from = zabbix-monitor@example.com
+
+# SMTP ayarları
+smtp_server = localhost
+smtp_port = 25
+
+# SMTP kimlik doğrulama (isteğe bağlı)
+# smtp_user =
+# smtp_password =
+
+# TLS kullan (isteğe bağlı)
+smtp_tls = false
