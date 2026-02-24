@@ -5,6 +5,22 @@
   gather_facts: false
 
   tasks:
+    - name: DNS cozumlemesi test et
+      command: nslookup watchman.bulutistan.com
+      register: dns_test
+      ignore_errors: yes
+
+    - name: DNS sonucu
+      debug:
+        msg: "{{ dns_test.stdout_lines | default(dns_test.stderr_lines) }}"
+
+    - name: Env degiskenlerini kontrol et
+      debug:
+        msg:
+          - "ZABBIX_URL = {{ lookup('env', 'ZABBIX_URL') }}"
+          - "MAILTO     = {{ lookup('env', 'MAILTO') }}"
+          - "SMTP_SERVER= {{ lookup('env', 'SMTP_SERVER') }}"
+
     - name: Zabbix Action Monitor scriptini calistir
       command: python3 "{{ playbook_dir }}/zabbix_action_monitor.py"
       environment:
