@@ -128,11 +128,11 @@ ZABBIX_URL=http://zabbix.local ZABBIX_USER=Admin ZABBIX_PASSWORD=zabbix \
 
 # Belirli action'ları dışlayarak çalıştır (birden fazla eklenebilir)
 python3 zabbix_action_monitor.py --config config.ini \
-  --exclude-action "Servicecore Otomatik Ticket Kapatma" \
-  --exclude-action "Başka Korunan Action"
+  --exclude-action "Korunan Action Adi" \
+  --exclude-action "Baska Korunan Action"
 
 # Env variable ile dışlama
-EXCLUDE_ACTIONS="Servicecore Otomatik Ticket Kapatma,Başka Korunan Action" \
+EXCLUDE_ACTIONS="Korunan Action Adi,Baska Korunan Action" \
   python3 zabbix_action_monitor.py
 
 # Rapor
@@ -194,7 +194,7 @@ url = http://zabbix.example.com
 api_token = your_api_token_here
 dry_run = false
 # Virgülle ayrılmış; bu action'lar hiçbir zaman disable edilmez
-exclude_actions = Servicecore Otomatik Ticket Kapatma, Başka Korunan Action
+exclude_actions = Korunan Action Adi, Baska Korunan Action
 
 [email]
 mailto = ops@example.com
@@ -224,6 +224,6 @@ smtp_port = 25
 
 ### Dışlama listesi aktif
 ```
-2026-02-16 10:00:00 [INFO] Dışlanan action'lar (1): Servicecore Otomatik Ticket Kapatma
-2026-02-16 10:00:00 [DEBUG]    ⏭  Dışlama listesinde, atlanıyor → 'Servicecore Otomatik Ticket Kapatma'
+2026-02-16 10:00:00 [INFO] Dışlanan action'lar (1): Korunan Action Adi
+2026-02-16 10:00:00 [DEBUG]    ⏭  Dışlama listesinde, atlanıyor → 'Korunan Action Adi'
 ```
