@@ -224,16 +224,16 @@ def check_and_disable(api: ZabbixAPI, dry_run: bool = False,
 
             if dry_run:
                 logger.info("   [DRY-RUN] Disable edilmedi, sadece raporlandı.")
+                disabled_actions.append({
+                    "actionid": action_id,
+                    "name": action_name,
+                    "previous_status": action_status,
+                    "action_taken": "dry_run",
+                })
             else:
-                # Zaten disabled ise tekrar disable etmeye gerek yok
+                # Zaten disabled ise sadece logla, listeye ekleme (mail bombardımanı önlemi)
                 if action.get("status") == "1":
                     logger.info("   ℹ Zaten disabled, atlanıyor.")
-                    disabled_actions.append({
-                        "actionid": action_id,
-                        "name": action_name,
-                        "previous_status": action_status,
-                        "action_taken": "already_disabled",
-                    })
                     continue
 
                 try:
@@ -242,30 +242,27 @@ def check_and_disable(api: ZabbixAPI, dry_run: bool = False,
                         "   ✔ Action DISABLE edildi → '%s' (ID: %s)",
                         action_name, action_id,
                     )
+                    disabled_actions.append({
+                        "actionid": action_id,
+                        "name": action_name,
+                        "previous_status": action_status,
+                        "action_taken": "disabled",
+                    })
                 except RuntimeError as e:
                     logger.error(
                         "   ✘ Disable BAŞARISIZ → '%s' (ID: %s): %s",
                         action_name, action_id, e,
                     )
-                    continue
-
-            disabled_actions.append({
-                "actionid": action_id,
-                "name": action_name,
-                "previous_status": action_status,
-                "action_taken": "dry_run" if dry_run else "disabled",
-            })
 
     if not disabled_actions:
         logger.info("✔ Tüm trigger action'ların condition'ları mevcut. Sorun yok.")
     else:
         logger.info(
-            "Toplam %d adet boş condition'lı action %s.",
+            "Toplam %d adet action bu turda disable edildi.",
             len(disabled_actions),
-            "raporlandı (dry-run)" if dry_run else "işlendi",
         )
 
-        # E-posta gönder
+        # E-posta gönder — sadece bu turda YENİ disable edilenler için
         if mailto and disabled_actions:
             _send_report_email(disabled_actions, mailto, email_cfg or {}, dry_run)
 
