@@ -11,6 +11,7 @@
         ZABBIX_URL: "{{ lookup('env', 'ZABBIX_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
         ZABBIX_SSL_VERIFY: "false"
+        ZABBIX_IP_OVERRIDE: "10.6.116.178"
         MAILTO: "{{ lookup('env', 'MAILTO') }}"
         MAIL_FROM: "{{ lookup('env', 'MAIL_FROM') }}"
         SMTP_SERVER: "{{ lookup('env', 'SMTP_SERVER') }}"

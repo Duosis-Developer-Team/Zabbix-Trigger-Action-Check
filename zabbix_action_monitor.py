@@ -31,6 +31,8 @@ from email.mime.multipart import MIMEMultipart
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import ssl
+import socket
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -40,6 +42,27 @@ DEFAULT_LOG_FILE = ""
 DEFAULT_SMTP_SERVER = "localhost"
 DEFAULT_SMTP_PORT = 25
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ---------------------------------------------------------------------------
+# DNS Override (AWX container DNS sorunu için)
+# ZABBIX_IP_OVERRIDE=10.x.x.x ayarlanırsa, Zabbix hostname'i bu IP'ye yönlendirilir.
+# ---------------------------------------------------------------------------
+def _apply_dns_override():
+    ip_override = os.environ.get("ZABBIX_IP_OVERRIDE", "").strip()
+    zabbix_url = os.environ.get("ZABBIX_URL", "").strip()
+    if not ip_override or not zabbix_url:
+        return
+    hostname = urlparse(zabbix_url).hostname or ""
+    if not hostname:
+        return
+    _orig_getaddrinfo = socket.getaddrinfo
+    def _patched_getaddrinfo(*args):
+        if args[0] == hostname:
+            return _orig_getaddrinfo(ip_override, *args[1:])
+        return _orig_getaddrinfo(*args)
+    socket.getaddrinfo = _patched_getaddrinfo
+
+_apply_dns_override()
 
 # ---------------------------------------------------------------------------
 # Logging
