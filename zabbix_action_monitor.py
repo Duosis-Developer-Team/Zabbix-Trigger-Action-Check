@@ -186,7 +186,8 @@ def send_email(subject: str, body: str, mailto: str, mailfrom: str = "",
 # Monitor Logic
 # ---------------------------------------------------------------------------
 def check_and_disable(api: ZabbixAPI, dry_run: bool = False,
-                      mailto: str = "", email_cfg: dict = None) -> list:
+                      mailto: str = "", email_cfg: dict = None,
+                      excluded_names: list = None) -> list:
     """
     Condition'u boş olan trigger action'ları tespit eder ve disable eder.
     Disable edilen action listesini döndürür.
@@ -201,6 +202,7 @@ def check_and_disable(api: ZabbixAPI, dry_run: bool = False,
 
     logger.debug("Toplam %d adet trigger action bulundu.", len(actions))
 
+    excluded = set(excluded_names or [])
     statuses = {"0": "Enabled", "1": "Disabled"}
 
     for action in actions:
@@ -208,6 +210,11 @@ def check_and_disable(api: ZabbixAPI, dry_run: bool = False,
         action_name = action["name"]
         action_status = statuses.get(action.get("status", "?"), "?")
         conditions = action.get("filter", {}).get("conditions", [])
+
+        # Dışlama listesinde ise atla
+        if action_name in excluded:
+            logger.debug("   ⏭  Dışlama listesinde, atlanıyor → '%s'", action_name)
+            continue
 
         if not conditions:
             logger.warning(
@@ -351,7 +358,8 @@ def _signal_handler(signum, frame):
 
 
 def run_daemon(api: ZabbixAPI, interval: int, dry_run: bool = False,
-               mailto: str = "", email_cfg: dict = None):
+               mailto: str = "", email_cfg: dict = None,
+               excluded_names: list = None):
     """Belirtilen aralıkla kontrol döngüsü çalıştırır."""
     global _running
 
@@ -362,7 +370,8 @@ def run_daemon(api: ZabbixAPI, interval: int, dry_run: bool = False,
 
     while _running:
         try:
-            check_and_disable(api, dry_run=dry_run, mailto=mailto, email_cfg=email_cfg)
+            check_and_disable(api, dry_run=dry_run, mailto=mailto, email_cfg=email_cfg,
+                              excluded_names=excluded_names)
         except Exception as e:
             logger.error("Kontrol sırasında beklenmeyen hata: %s", e)
 
@@ -385,6 +394,10 @@ def load_config(config_path: str) -> dict:
     if not cfg.has_section(section):
         raise ValueError(f"Config dosyasında [{section}] bölümü bulunamadı.")
 
+    # exclude_actions: virgülle ayrılmış action isimleri
+    raw_exclude = cfg.get(section, "exclude_actions", fallback="")
+    excluded = [n.strip() for n in raw_exclude.split(",") if n.strip()]
+
     result = {
         "url": cfg.get(section, "url", fallback=""),
         "user": cfg.get(section, "user", fallback=""),
@@ -394,6 +407,7 @@ def load_config(config_path: str) -> dict:
         "log_file": cfg.get(section, "log_file", fallback=DEFAULT_LOG_FILE),
         "dry_run": cfg.getboolean(section, "dry_run", fallback=False),
         "debug": cfg.getboolean(section, "debug", fallback=False),
+        "exclude_actions": excluded,
     }
 
     # E-posta ayarları
@@ -459,6 +473,14 @@ Environment Variables (AWX/CI uyumlu):
     parser.add_argument("--log-file", dest="log_file", default="",
                         help="Log dosyası yolu")
     parser.add_argument("--debug", action="store_true", help="Debug log seviyesi")
+    parser.add_argument(
+        "--exclude-action",
+        dest="exclude_actions",
+        action="append",
+        default=[],
+        metavar="ACTION_NAME",
+        help="Dışlanacak trigger action adı (birden fazla kez kullanılabilir)",
+    )
 
     return parser.parse_args()
 
@@ -505,6 +527,18 @@ def _resolve_settings(args) -> dict:
         or args.debug
         or cfg.get("debug", False)
     )
+
+    # Dışlama listesi: ENV > CLI > Config
+    env_exclude = os.environ.get("EXCLUDE_ACTIONS", "")
+    env_exclude_list = [n.strip() for n in env_exclude.split(",") if n.strip()]
+    cfg_exclude_list = cfg.get("exclude_actions", [])
+    # ENV varsa önce onu al, sonra CLI, sonra config
+    if env_exclude_list:
+        settings["exclude_actions"] = env_exclude_list
+    elif args.exclude_actions:
+        settings["exclude_actions"] = args.exclude_actions
+    else:
+        settings["exclude_actions"] = cfg_exclude_list
 
     # E-posta ayarları
     settings["email_cfg"] = {
@@ -553,13 +587,20 @@ def main():
         report_all_actions(api)
         return
 
+    # Dışlama listesi
+    excluded = s.get("exclude_actions", [])
+    if excluded:
+        logger.info("Dışlanan action'lar (%d): %s", len(excluded), ", ".join(excluded))
+
     # Çalıştır
     if args.daemon:
         run_daemon(api, s["interval"], dry_run=s["dry_run"],
-                   mailto=s["mailto"], email_cfg=s["email_cfg"])
+                   mailto=s["mailto"], email_cfg=s["email_cfg"],
+                   excluded_names=excluded)
     else:
         result = check_and_disable(api, dry_run=s["dry_run"],
-                                   mailto=s["mailto"], email_cfg=s["email_cfg"])
+                                   mailto=s["mailto"], email_cfg=s["email_cfg"],
+                                   excluded_names=excluded)
         # AWX uyumlu exit code: 2 = changed (disable edilen action var)
         if result and not s["dry_run"]:
             sys.exit(2)

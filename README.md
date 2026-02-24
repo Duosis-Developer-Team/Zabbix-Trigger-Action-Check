@@ -15,6 +15,7 @@ Zabbix 6.4'te bir trigger action'ın condition'ı silindiğinde action aktif kal
 - **Environment variable desteği** — AWX/Ansible Tower credential entegrasyonu
 - **E-posta bildirimi** — Boş condition tespit edildiğinde SMTP ile bildirim
 - **AWX uyumlu exit code** — `0`=sorun yok, `2`=changed (disable edilen action var)
+- **Dışlama listesi** — Belirtilen action'lar hiçbir koşulda disable edilmez
 
 ---
 
@@ -79,20 +80,21 @@ python3 /opt/zabbix-action-monitor/zabbix_action_monitor.py
 
 Tüm ayarlar environment variable ile verilebilir. Öncelik: **ENV > CLI > Config Dosyası**
 
-| Variable           | Açıklama                  |
-|--------------------|---------------------------|
-| `ZABBIX_URL`       | Zabbix frontend URL       |
-| `ZABBIX_USER`      | Kullanıcı adı             |
-| `ZABBIX_PASSWORD`  | Şifre                     |
-| `ZABBIX_API_TOKEN` | API Token                 |
-| `MAILTO`           | Bildirim e-posta adresi   |
-| `MAIL_FROM`        | Gönderen adres            |
-| `SMTP_SERVER`      | SMTP sunucusu             |
-| `SMTP_PORT`        | SMTP portu                |
-| `SMTP_USER`        | SMTP kullanıcı            |
-| `SMTP_PASSWORD`    | SMTP şifre                |
-| `SMTP_TLS`         | TLS kullan (true/false)   |
-| `DRY_RUN`          | Sadece raporla            |
+| Variable           | Açıklama                                                  |
+|--------------------|-----------------------------------------------------------|
+| `ZABBIX_URL`       | Zabbix frontend URL                                       |
+| `ZABBIX_USER`      | Kullanıcı adı                                             |
+| `ZABBIX_PASSWORD`  | Şifre                                                     |
+| `ZABBIX_API_TOKEN` | API Token                                                 |
+| `MAILTO`           | Bildirim e-posta adresi                                   |
+| `MAIL_FROM`        | Gönderen adres                                            |
+| `SMTP_SERVER`      | SMTP sunucusu                                             |
+| `SMTP_PORT`        | SMTP portu                                                |
+| `SMTP_USER`        | SMTP kullanıcı                                            |
+| `SMTP_PASSWORD`    | SMTP şifre                                                |
+| `SMTP_TLS`         | TLS kullan (true/false)                                   |
+| `DRY_RUN`          | Sadece raporla                                            |
+| `EXCLUDE_ACTIONS`  | Dışlanacak action'lar (virgülle ayrılmış, tam isim eşleşmesi) |
 
 ---
 
@@ -124,28 +126,38 @@ ZABBIX_URL=http://zabbix.local ZABBIX_USER=Admin ZABBIX_PASSWORD=zabbix \
   MAILTO=admin@example.com SMTP_SERVER=smtp.local \
   python3 zabbix_action_monitor.py
 
+# Belirli action'ları dışlayarak çalıştır (birden fazla eklenebilir)
+python3 zabbix_action_monitor.py --config config.ini \
+  --exclude-action "Servicecore Otomatik Ticket Kapatma" \
+  --exclude-action "Başka Korunan Action"
+
+# Env variable ile dışlama
+EXCLUDE_ACTIONS="Servicecore Otomatik Ticket Kapatma,Başka Korunan Action" \
+  python3 zabbix_action_monitor.py
+
 # Rapor
 python3 zabbix_action_monitor.py --config config.ini --report
 ```
 
 ### CLI Parametreleri
 
-| Parametre       | Açıklama                | Varsayılan  |
-|-----------------|-------------------------|-------------|
-| `--config`      | Config dosyası          | -           |
-| `--url`         | Zabbix URL              | -           |
-| `--user`        | Kullanıcı adı           | -           |
-| `--password`    | Şifre                   | -           |
-| `--api-token`   | API Token               | -           |
-| `--mailto`      | Bildirim e-postası      | -           |
-| `--smtp-server` | SMTP sunucusu           | `localhost` |
-| `--smtp-port`   | SMTP portu              | `25`        |
-| `--daemon`      | Daemon modu             | false       |
-| `--interval`    | Kontrol aralığı (sn)    | 300         |
-| `--dry-run`     | Sadece raporla          | false       |
-| `--report`      | Tüm action raporu       | false       |
-| `--log-file`    | Log dosyası             | stdout      |
-| `--debug`       | Debug seviyesi          | false       |
+| Parametre          | Açıklama                                              | Varsayılan  |
+|--------------------|-------------------------------------------------------|-------------|
+| `--config`         | Config dosyası                                        | -           |
+| `--url`            | Zabbix URL                                            | -           |
+| `--user`           | Kullanıcı adı                                         | -           |
+| `--password`       | Şifre                                                 | -           |
+| `--api-token`      | API Token                                             | -           |
+| `--mailto`         | Bildirim e-postası                                    | -           |
+| `--smtp-server`    | SMTP sunucusu                                         | `localhost` |
+| `--smtp-port`      | SMTP portu                                            | `25`        |
+| `--daemon`         | Daemon modu                                           | false       |
+| `--interval`       | Kontrol aralığı (sn)                                  | 300         |
+| `--dry-run`        | Sadece raporla                                        | false       |
+| `--report`         | Tüm action raporu                                     | false       |
+| `--log-file`       | Log dosyası                                           | stdout      |
+| `--debug`          | Debug seviyesi                                        | false       |
+| `--exclude-action` | Dışlanacak action adı (birden fazla kez kullanılabilir) | -         |
 
 ---
 
@@ -174,6 +186,25 @@ python3 zabbix_action_backup.py --config config.ini --retain 7
 0 2 * * * /usr/bin/python3 /opt/zabbix-action-monitor/zabbix_action_backup.py --config /etc/zabbix/action_monitor.ini --output /backup/zabbix/ --retain 30 >> /var/log/zabbix_action_backup.log 2>&1
 ```
 
+## Config Dosyası Örneği
+
+```ini
+[zabbix]
+url = http://zabbix.example.com
+api_token = your_api_token_here
+dry_run = false
+# Virgülle ayrılmış; bu action'lar hiçbir zaman disable edilmez
+exclude_actions = Servicecore Otomatik Ticket Kapatma, Başka Korunan Action
+
+[email]
+mailto = ops@example.com
+mail_from = zabbix-monitor@example.com
+smtp_server = smtp.example.com
+smtp_port = 25
+```
+
+---
+
 ## Çıktı Örnekleri
 
 ### Sorun yok (exit 0)
@@ -189,4 +220,10 @@ python3 zabbix_action_backup.py --config config.ini --retain 7
 2026-02-16 10:00:00 [WARNING] ⚠  BOŞ CONDITION → Action: 'test11' (ID: 42, Status: Enabled)
 2026-02-16 10:00:00 [INFO]    ✔ Action DISABLE edildi → 'test11' (ID: 42)
 2026-02-16 10:00:00 [INFO] 📧 E-posta gönderildi → admin@example.com
+```
+
+### Dışlama listesi aktif
+```
+2026-02-16 10:00:00 [INFO] Dışlanan action'lar (1): Servicecore Otomatik Ticket Kapatma
+2026-02-16 10:00:00 [DEBUG]    ⏭  Dışlama listesinde, atlanıyor → 'Servicecore Otomatik Ticket Kapatma'
 ```
