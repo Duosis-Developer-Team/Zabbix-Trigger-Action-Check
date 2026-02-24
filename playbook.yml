@@ -1,0 +1,27 @@
+---
+- name: Zabbix Trigger Action Monitor
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Zabbix Action Monitor scriptini calistir
+      command: python3 "{{ playbook_dir }}/zabbix_action_monitor.py"
+      environment:
+        ZABBIX_URL: "{{ lookup('env', 'ZABBIX_URL') }}"
+        ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
+        MAILTO: "{{ lookup('env', 'MAILTO') }}"
+        MAIL_FROM: "{{ lookup('env', 'MAIL_FROM') }}"
+        SMTP_SERVER: "{{ lookup('env', 'SMTP_SERVER') }}"
+        SMTP_PORT: "{{ lookup('env', 'SMTP_PORT') }}"
+        SMTP_TLS: "{{ lookup('env', 'SMTP_TLS') | default('false') }}"
+        EXCLUDE_ACTIONS: "{{ lookup('env', 'EXCLUDE_ACTIONS') }}"
+      register: result
+      # exit 0 = sorun yok, exit 2 = action disable edildi (changed)
+      failed_when: result.rc not in [0, 2]
+      changed_when: result.rc == 2
+
+    - name: Sonucu logla
+      debug:
+        msg: "{{ result.stdout_lines }}"
+      when: result.stdout_lines is defined
