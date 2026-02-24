@@ -30,6 +30,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+import ssl
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -65,10 +66,15 @@ def setup_logging(log_file: str = "", debug: bool = False):
 class ZabbixAPI:
     """Zabbix JSON-RPC API için minimal istemci."""
 
-    def __init__(self, url: str, user: str = "", password: str = "", api_token: str = ""):
+    def __init__(self, url: str, user: str = "", password: str = "", api_token: str = "",
+                 ssl_verify: bool = True):
         self.url = url.rstrip("/") + "/api_jsonrpc.php"
         self.auth = None
         self._request_id = 0
+        self._ssl_verify = ssl_verify
+
+        if not ssl_verify:
+            logger.warning("SSL doğrulamasi devre dışı (ZABBIX_SSL_VERIFY=false)")
 
         if api_token:
             self.auth = api_token
@@ -94,8 +100,15 @@ class ZabbixAPI:
         data = json.dumps(payload).encode("utf-8")
         req = Request(self.url, data=data, headers={"Content-Type": "application/json-rpc"})
 
+        # SSL context
+        ssl_ctx = None
+        if not self._ssl_verify:
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+
         try:
-            with urlopen(req, timeout=30) as resp:
+            with urlopen(req, timeout=30, context=ssl_ctx) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
         except HTTPError as e:
             raise RuntimeError(f"HTTP hatası: {e.code} {e.reason}") from e
@@ -507,6 +520,7 @@ def _resolve_settings(args) -> dict:
         "api_token": resolve("ZABBIX_API_TOKEN", args.api_token, "api_token"),
         "mailto": resolve("MAILTO", args.mailto, "mailto"),
         "log_file": resolve("LOG_FILE", args.log_file, "log_file"),
+        "ssl_verify": os.environ.get("ZABBIX_SSL_VERIFY", "true").lower() not in ("false", "0", "no"),
     }
 
     # Boolean/int ayarlar
@@ -572,7 +586,8 @@ def main():
 
     # Bağlan
     try:
-        api = ZabbixAPI(s["url"], user=s["user"], password=s["password"], api_token=s["api_token"])
+        api = ZabbixAPI(s["url"], user=s["user"], password=s["password"],
+                        api_token=s["api_token"], ssl_verify=s["ssl_verify"])
         version = api.get_api_version()
         logger.info("Zabbix API versiyonu: %s", version)
     except Exception as e:
