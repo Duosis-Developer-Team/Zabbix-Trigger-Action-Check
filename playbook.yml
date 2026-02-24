@@ -5,14 +5,23 @@
   gather_facts: false
 
   tasks:
-    - name: DNS cozumlemesi test et
-      command: nslookup watchman.bulutistan.com
+    - name: Python ile DNS testi
+      command: python3 -c "import socket; print(socket.gethostbyname('watchman.bulutistan.com'))"
       register: dns_test
       ignore_errors: yes
 
     - name: DNS sonucu
       debug:
-        msg: "{{ dns_test.stdout_lines | default(dns_test.stderr_lines) }}"
+        msg: "{{ dns_test.stdout | default(dns_test.stderr) }}"
+
+    - name: curl ile baglanti testi
+      command: curl -sk -o /dev/null -w "%{http_code}" https://watchman.bulutistan.com/api_jsonrpc.php
+      register: curl_test
+      ignore_errors: yes
+
+    - name: curl sonucu
+      debug:
+        msg: "HTTP status: {{ curl_test.stdout | default(curl_test.stderr) }}"
 
     - name: Env degiskenlerini kontrol et
       debug:
