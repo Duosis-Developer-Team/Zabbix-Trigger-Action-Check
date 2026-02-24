@@ -10,7 +10,7 @@
       environment:
         ZABBIX_URL: "{{ lookup('env', 'ZABBIX_URL') }}"
         ZABBIX_API_TOKEN: "{{ lookup('env', 'ZABBIX_API_TOKEN') }}"
-        ZABBIX_SSL_VERIFY: "{{ lookup('env', 'ZABBIX_SSL_VERIFY') | default('false') }}"
+        ZABBIX_SSL_VERIFY: "false"
         MAILTO: "{{ lookup('env', 'MAILTO') }}"
         MAIL_FROM: "{{ lookup('env', 'MAIL_FROM') }}"
         SMTP_SERVER: "{{ lookup('env', 'SMTP_SERVER') }}"
